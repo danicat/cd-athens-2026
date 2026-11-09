@@ -56,6 +56,8 @@ Make sure `./check_env.sh` completes successfully before moving on to the next s
 
 ### 3. Open Antigravity and activate /vibe-game-developer
 
+> **Hint**: If Antigravity 2.0 was already open while running `./check_env.sh --fix` or installing plugins (such as `agy-game-studio`), reload the Antigravity 2.0 window with **`Cmd+Shift+R`** (`Ctrl+Shift+R` on Windows/Linux) so the new plugins and skills load into your session.
+
 The `/vibe-game-developer` is the entry point skill for this workshop. This skill is installed as part of the [agy-game-studio](https://github.com/danicat/agy-game-studio) plugin.
 
 Example activation:
@@ -76,35 +78,22 @@ Note: the sections below describe each individual component in details and are p
 | Dependency | Purpose | Installation |
 | :--- | :--- | :--- |
 | **Go 1.26+** | Compiling [Ebitengine v2](https://ebitengine.org) games to native binaries and WebAssembly (`GOOS=js GOARCH=wasm`) | [go.dev/dl](https://go.dev/dl/) or `brew install go` |
-| **Gemini API CLI (`gemini-api`)** | Zero-dependency CLI for generating sprites/art with **Nano Banana** (`gemini-api image`) and soundtracks with **Lyria** (`gemini-api music`) | `go install github.com/google-gemini/gemini-api-cli/cmd/gemini-api@latest` |
-| **Google Cloud SDK (`gcloud`)** | Authentication (`ADC`) and deploying WebAssembly games to **Cloud Run** | [cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install) or `brew install --cask google-cloud-sdk` |
+| **Google Cloud SDK (`gcloud`)** | Vertex AI / Gemini Enterprise authentication (`ADC`) and deploying WebAssembly games to **Cloud Run** | [cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install) or `brew install --cask google-cloud-sdk` |
 | **Antigravity 2.0** | Desktop AI-first development platform and side-panel studios | [antigravity.google/download](https://antigravity.google/download) |
 | **Antigravity CLI (`agy`)** | Terminal-based coding agent (used on local terminals or Google Cloud Shell) | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` (or see [antigravity.google/download](https://antigravity.google/download)) |
-
-Make sure your Go binary directory (`$(go env GOPATH)/bin`, usually `~/go/bin`) is on your `PATH`:
-
-```bash
-export PATH="$PATH:$(go env GOPATH)/bin"
-```
-
-Verify the `gemini-api` CLI:
-
-```bash
-gemini-api image --help
-gemini-api music --help
-```
+| **`uv` & `python3`** | Python package and script runner for **Nano Banana** (`banana.py`), **Lyria** (`lyria.py`), and **Gemini Omni** (`omni.py`) Vertex AI scripts | `curl -LsSf https://astral.sh/uv/install.sh \| sh` and [python.org/downloads](https://www.python.org/downloads/) (or `brew install uv python`) |
 
 ---
 
 ### 2. Antigravity Plugin Dependencies
 
-This workshop uses three Antigravity 2.0 plugins that bundle skills, rules, MCP servers, and interactive side-panel studios.
+This workshop uses two Antigravity 2.0 plugins that bundle skills, rules, MCP servers, and interactive side-panel studios.
 
 #### A. Antigravity 2D Game Studio (`agy-game-studio`) (*Required*)
 
 - **Repository**: [github.com/danicat/agy-game-studio](https://github.com/danicat/agy-game-studio)
 - **Game Dev Studio UI Extension (`/game-dev-studio`)**: includes editors for music, sound effects and sprites and a playtest environment where you can annotate your game to collaborate with Gemini
-- **12 Bundled Skills**:
+- **13 Bundled Skills**:
 
 | Skill | What it does |
 | :--- | :--- |
@@ -113,10 +102,11 @@ This workshop uses three Antigravity 2.0 plugins that bundle skills, rules, MCP 
 | [`ebitengineer`](https://github.com/danicat/agy-game-studio/blob/main/skills/ebitengineer/SKILL.md) | Engineering architecture and best practices for building 2D games in Go with Ebitengine v2, including scene state machines, virtual resolution scaling, fixed-timestep physics, zero-allocation draw loops, 4-byte aligned PCM audio, Kage shaders, and WebAssembly builds. |
 | [`game-dev-studio`](https://github.com/danicat/agy-game-studio/blob/main/skills/game-dev-studio/SKILL.md) | Opens the Game Dev Studio side-panel UI extension (`/game-dev-studio`) with the **Playtest tab** (`🎮 Playtest`), **Sound tab / Sound Editor** (`🎹 Sound`), and **Sprite tab / Sprite Editor** (`🎨 Sprites`). |
 | [`sprite-design`](https://github.com/danicat/agy-game-studio/blob/main/skills/sprite-design/SKILL.md) | Complete guide and `.sprite` engine for 2D game sprites, tilesets, and frame animations in Ebitengine, featuring the 2-step AI Character Sheet to Sprite Grid normalization pipeline (`normalize` into `.sprite`, `.aseprite`, `.png`, and `.json`), procedural SDF/pixel-art `.sprite` definitions, and zero-allocation `AnimationController`. |
-| [`nano-banana`](https://github.com/danicat/agy-game-studio/blob/main/skills/nano-banana/SKILL.md) | Generates character turnaround sheets, `4x4` chroma-key sprite grids, tilesets, parallax backgrounds, and title screen art with Nano Banana (`gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`) via the `gemini-api` CLI and Google Gen AI SDKs. |
+| [`nano-banana`](https://github.com/danicat/agy-game-studio/blob/main/skills/nano-banana/SKILL.md) | Generates character turnaround sheets, `4x4` chroma-key sprite grids, tilesets, parallax backgrounds, and title screen art with Nano Banana (`gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`) via `uv run skills/nano-banana/scripts/banana.py` and Google Gen AI SDKs. |
 | [`procedural-sfx`](https://github.com/danicat/agy-game-studio/blob/main/skills/procedural-sfx/SKILL.md) | Synthesizes 4-byte aligned 16-bit 44.1 kHz stereo PCM game sound effects in memory from `.sfx` DSL scripts with PolyBLEP anti-aliasing, 18 built-in archetype presets, SVF filter sweeps, 16-bit Galois LFSR chiptune noise, and production quality validation. |
 | [`procedural-music`](https://github.com/danicat/agy-game-studio/blob/main/skills/procedural-music/SKILL.md) | Composes, validates, and synthesizes multi-channel 16-bit stereo BGM from `.music` DSL scores using pure-Go SEGA Mega Drive YM2612 FM + SN76489 PSG synthesis or native macOS Apple CoreAudio GM instruments (`-apple`). |
-| [`lyria`](https://github.com/danicat/agy-game-studio/blob/main/skills/lyria/SKILL.md) | Generates 44.1 kHz stereo soundtracks, full vocal songs, and 30-second instrumental loops from text prompts or concept art using Google Lyria (`lyria-3.5` and `lyria-3-clip-preview`) via the `gemini-api` CLI and Google Gen AI SDKs. |
+| [`lyria`](https://github.com/danicat/agy-game-studio/blob/main/skills/lyria/SKILL.md) | Generates 44.1 kHz stereo soundtracks, full vocal songs, and 30-second instrumental loops from text prompts or concept art using Google Lyria (`lyria-3.5` and `lyria-3-clip-preview`) via `uv run skills/lyria/scripts/lyria.py` and Google Gen AI SDKs. |
+| [`gemini-omni`](https://github.com/danicat/agy-game-studio/blob/main/skills/gemini-omni/SKILL.md) | Conversational video generation, multimodal video editing, first-and-last-frame interpolation, and video extension (360p to 4K with synchronized audio) using Gemini Omni Flash 1.2 & 1.1 (`gemini-omni-flash-1.2-preview`, `gemini-omni-1.1-flash`) via `uv run skills/gemini-omni/scripts/omni.py` and Google Gen AI SDKs. |
 | [`godoctor`](https://github.com/danicat/agy-game-studio/blob/main/skills/godoctor/SKILL.md) | Optional Go quality control and architectural safety toolset orchestrating `gofmt`, `goimports`, `go vet`, `modernize`, `golangci-lint`, compiler rollback gates, TestQuery SQLite analytics, and Selene mutation testing. |
 | [`swarm-coding`](https://github.com/danicat/agy-game-studio/blob/main/skills/swarm-coding/SKILL.md) | Optional divide-and-conquer multi-agent swarm orchestrator with Coordinator, Lead, and Specialist roles and strict Single Writer file boundaries for concurrent multi-package development. |
 | [`parallel`](https://github.com/danicat/agy-game-studio/blob/main/skills/parallel/SKILL.md) | Optional general-purpose task parallelization and subagent scaling engine for flat disjoint task fan-out, reactive worker queues, and Best-of-N tournaments. |
@@ -131,23 +121,7 @@ git clone https://github.com/danicat/agy-game-studio.git ~/.gemini/config/plugin
 agy plugin install https://github.com/danicat/agy-game-studio
 ```
 
-#### B. Paint Studio (`agy-paint-studio`) (*Optional, Recommended*)
-
-- **Repository**: [github.com/danicat/agy-paint-studio](https://github.com/danicat/agy-paint-studio)
-- **What it provides**:
-  - **Paint Studio Side Panel & Inline Canvas (`/paint-studio`)**: quick drawing canvas for sketches and to communicate with Antigravity visually.
-
-**Manual Install**:
-
-```bash
-# Via Antigravity 2.0 / IDE global plugins folder
-git clone https://github.com/danicat/agy-paint-studio.git ~/.gemini/config/plugins/agy-paint-studio
-
-# Or via Antigravity CLI (agy)
-agy plugin install https://github.com/danicat/agy-paint-studio
-```
-
-#### C. Google Cloud Developer Plugin (`google-cloud-developer`) (*Required*)
+#### B. Google Cloud Developer Plugin (`google-cloud-developer`) (*Required*)
 
 - **Repository**: [github.com/google/skills/tree/main/plugins/cloud/google-cloud-developer](https://github.com/google/skills/tree/main/plugins/cloud/google-cloud-developer)
 - **What it provides**:
@@ -166,7 +140,7 @@ TMP_SKILLS="$(mktemp -d)" && \
   rm -rf "$TMP_SKILLS"
 ```
 
-> **Note**: After cloning plugins into `~/.gemini/config/plugins/`, restart Antigravity 2.0 and check **Customizations > Installed** to ensure they are enabled.
+> **Note**: After cloning plugins into `~/.gemini/config/plugins/`, reload Antigravity 2.0 with **`Cmd+Shift+R`** (`Ctrl+Shift+R` on Windows/Linux) and check **Customizations > Installed** to ensure they are enabled.
 
 ---
 

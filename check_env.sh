@@ -41,44 +41,41 @@ while [[ $# -gt 0 ]]; do
       cat <<EOF
 Usage: $(basename "$0") [--fix [YOUR_PROJECT_ID]]
 
-Validates and configures all system, Google Cloud, and Antigravity 2.0 prerequisites
-for the Cloud Day Athens 2026 workshop:
+Validates and configures all system, Google Cloud (Vertex AI / Gemini Enterprise),
+and Antigravity 2.0 prerequisites for the Cloud Day Athens 2026 workshop:
 
   1. System Toolchain:
      - Go 1.26+ (for Ebitengine v2 and WebAssembly compilation)
      - Go WebAssembly runtime asset (wasm_exec.js in GOROOT)
-     - Gemini API CLI (gemini-api for Nano Banana and Lyria)
      - Google Cloud SDK (gcloud CLI)
      - Antigravity 2.0 or Antigravity CLI (agy)
+     - uv (Python package & script runner for banana.py, lyria.py, and omni.py)
+     - python3 (Python 3.10+ runtime)
      - git
 
-  2. Google Cloud Project, Billing Project & APIs:
+  2. Google Cloud Project, Billing Project & Vertex AI APIs:
      - Active GCP Project ID (gcloud config set project YOUR_PROJECT_ID)
-     - ADC OAuth2 login with --billing-project YOUR_PROJECT_ID and generative-language scope
+     - Vertex AI Application Default Credentials (gcloud auth application-default login --billing-project YOUR_PROJECT_ID)
      - ADC quota_project_id configured in application_default_credentials.json
      - Required GCP APIs enabled:
-         * generativelanguage.googleapis.com (Nano Banana & Lyria via gemini-api CLI)
-         * aiplatform.googleapis.com         (Vertex AI)
+         * aiplatform.googleapis.com         (Vertex AI / Gemini Enterprise)
          * developerknowledge.googleapis.com (Google Cloud Developer MCP)
          * run.googleapis.com                (Cloud Run game deployment)
          * cloudbuild.googleapis.com         (Cloud Build container builds)
          * artifactregistry.googleapis.com   (Artifact Registry)
-     - gemini-api CLI configured with access token and quota project
 
   3. Antigravity Plugins:
      - agy-game-studio (Required): https://github.com/danicat/agy-game-studio
      - google-cloud-developer (Required): https://github.com/google/skills/tree/main/plugins/cloud/google-cloud-developer
-     - agy-paint-studio (Optional, Recommended): https://github.com/danicat/agy-paint-studio
 
 Options:
-  --fix [PROJECT_ID]   Install missing CLI/plugins, authenticate ADC with billing project
-                       and required scopes, enable required GCP APIs, and configure gemini-api
+  --fix [PROJECT_ID]   Install missing tools/plugins, authenticate Vertex AI ADC with
+                       your billing project, and enable required GCP APIs
   -h, --help           Show this help message
 EOF
       exit 0
       ;;
     *)
-      # Allow passing PROJECT_ID directly as positional arg if it doesn't start with -
       if [[ -z "$ARG_PROJECT_ID" && "$1" != -* ]]; then
         ARG_PROJECT_ID="$1"
       fi
@@ -100,14 +97,12 @@ REMEDIATIONS=()
 NOTES=()
 
 REQUIRED_APIS=(
-  "generativelanguage.googleapis.com"
   "aiplatform.googleapis.com"
   "developerknowledge.googleapis.com"
   "run.googleapis.com"
   "cloudbuild.googleapis.com"
   "artifactregistry.googleapis.com"
 )
-REQUIRED_SCOPES="https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/generative-language"
 
 record_row() {
   local component="$1"
@@ -137,12 +132,10 @@ if command -v go >/dev/null 2>&1; then
     GOBIN_DIR="$(go env GOPATH 2>/dev/null || echo "$HOME/go")/bin"
   fi
   export PATH="$PATH:$GOBIN_DIR"
-else
-  GOBIN_DIR="$HOME/go/bin"
 fi
 
 # Resolve Project ID from argument, environment, or gcloud config
-GCP_PROJECT="${ARG_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-${GEMINI_USER_PROJECT:-}}}"
+GCP_PROJECT="${ARG_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-}}"
 if [[ -z "$GCP_PROJECT" ]] && command -v gcloud >/dev/null 2>&1; then
   GCP_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
   [[ "$GCP_PROJECT" == "(unset)" ]] && GCP_PROJECT=""
@@ -169,21 +162,17 @@ if [[ "$AUTO_FIX" -eq 1 ]]; then
     curl -fsSL https://antigravity.google/cli/install.sh | bash || true
   fi
 
-  # 2. Install gemini-api CLI if missing
-  if command -v go >/dev/null 2>&1 && ! command -v gemini-api >/dev/null 2>&1; then
-    echo -e "\n${BOLD}-> Installing gemini-api CLI...${NC}"
-    go install github.com/google-gemini/gemini-api-cli/cmd/gemini-api@latest || true
+  # 2. Install uv if missing
+  if ! command -v uv >/dev/null 2>&1; then
+    echo -e "\n${BOLD}-> Installing uv Python package runner...${NC}"
+    curl -LsSf https://astral.sh/uv/install.sh | sh || true
   fi
 
-  # 2. Install Antigravity plugins if missing
+  # 3. Install Antigravity plugins if missing
   mkdir -p "$HOME/.gemini/config/plugins"
   if [[ ! -d "$HOME/.gemini/config/plugins/agy-game-studio" && ! -d ".agents/plugins/agy-game-studio" ]]; then
     echo -e "\n${BOLD}-> Installing agy-game-studio plugin...${NC}"
     git clone https://github.com/danicat/agy-game-studio.git "$HOME/.gemini/config/plugins/agy-game-studio" || true
-  fi
-  if [[ ! -d "$HOME/.gemini/config/plugins/agy-paint-studio" && ! -d ".agents/plugins/agy-paint-studio" ]]; then
-    echo -e "\n${BOLD}-> Installing agy-paint-studio plugin...${NC}"
-    git clone https://github.com/danicat/agy-paint-studio.git "$HOME/.gemini/config/plugins/agy-paint-studio" || true
   fi
   if [[ ! -d "$HOME/.gemini/config/plugins/google-cloud-developer" && ! -d ".agents/plugins/google-cloud-developer" ]]; then
     echo -e "\n${BOLD}-> Installing google-cloud-developer plugin...${NC}"
@@ -194,46 +183,25 @@ if [[ "$AUTO_FIX" -eq 1 ]]; then
     rm -rf "$TMP_SKILLS"
   fi
 
-  # 3. Configure GCP Project, APIs, ADC + Billing Project, and gemini-api CLI
+  # 4. Configure GCP Project, APIs, and Vertex AI ADC + Billing Project
   if [[ -n "$GCP_PROJECT" ]] && command -v gcloud >/dev/null 2>&1; then
     echo -e "\n${BOLD}-> Setting active gcloud project to ${GCP_PROJECT}...${NC}"
     gcloud config set project "$GCP_PROJECT"
 
     if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then
       echo -e "\n${BOLD}-> Logging in to gcloud CLI...${NC}"
-      gcloud auth login -- project="$GCP_PROJECT" || gcloud auth login
+      gcloud auth login --project="$GCP_PROJECT" || gcloud auth login
     fi
 
     echo -e "\n${BOLD}-> Enabling required Google Cloud APIs on ${GCP_PROJECT}...${NC}"
     gcloud services enable "${REQUIRED_APIS[@]}" --project="$GCP_PROJECT"
 
-    # Check if ADC needs login or scope/billing-project update
-    NEED_ADC_LOGIN=0
-    if ! ACCESS_TOKEN="$(gcloud auth application-default print-access-token 2>/dev/null)"; then
-      NEED_ADC_LOGIN=1
-    else
-      TOKEN_SCOPES="$(curl -sS --max-time 5 "https://oauth2.googleapis.com/tokeninfo?access_token=${ACCESS_TOKEN}" 2>/dev/null | grep -o '"scope": *"[^"]*"' || true)"
-      if [[ -n "$TOKEN_SCOPES" ]] && ! echo "$TOKEN_SCOPES" | grep -q "generative-language"; then
-        NEED_ADC_LOGIN=1
-      fi
-    fi
-
-    if [[ "$NEED_ADC_LOGIN" -eq 1 ]]; then
-      echo -e "\n${BOLD}-> Authenticating Application Default Credentials with billing project & scopes...${NC}"
-      gcloud auth application-default login \
-        --billing-project "$GCP_PROJECT" \
-        --scopes="$REQUIRED_SCOPES"
+    if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
+      echo -e "\n${BOLD}-> Authenticating Application Default Credentials with billing project ${GCP_PROJECT}...${NC}"
+      gcloud auth application-default login --billing-project "$GCP_PROJECT"
     else
       echo -e "\n${BOLD}-> Setting ADC billing/quota project to ${GCP_PROJECT}...${NC}"
       gcloud auth application-default set-quota-project "$GCP_PROJECT" || true
-    fi
-
-    if command -v gemini-api >/dev/null 2>&1 && ACCESS_TOKEN="$(gcloud auth application-default print-access-token 2>/dev/null)"; then
-      echo -e "\n${BOLD}-> Configuring gemini-api CLI with project ${GCP_PROJECT} and ADC token...${NC}"
-      gemini-api configure \
-        --user-project "$GCP_PROJECT" \
-        --access-token "$ACCESS_TOKEN" \
-        --no-keyring >/dev/null
     fi
   fi
   echo ""
@@ -280,15 +248,7 @@ else
     "Install Go 1.26+ first"
 fi
 
-# 3. Check Gemini API CLI (gemini-api)
-if command -v gemini-api >/dev/null 2>&1; then
-  record_row "gemini-api CLI" "PASS" "Found ($(command -v gemini-api))"
-else
-  record_row "gemini-api CLI" "FAIL" "gemini-api binary not found" \
-    "go install github.com/google-gemini/gemini-api-cli/cmd/gemini-api@latest && export PATH=\"\$PATH:${GOBIN_DIR}\""
-fi
-
-# 4. Check gcloud CLI
+# 3. Check gcloud CLI
 if command -v gcloud >/dev/null 2>&1; then
   record_row "gcloud CLI" "PASS" "Google Cloud SDK installed"
 else
@@ -296,7 +256,7 @@ else
     "Install Google Cloud SDK: https://cloud.google.com/sdk/docs/install"
 fi
 
-# 5. Check Active GCP Project ID
+# 4. Check Active GCP Project ID
 TARGET_PROJ="${GCP_PROJECT:-YOUR_PROJECT_ID}"
 if [[ -n "$GCP_PROJECT" ]]; then
   record_row "GCP Project ID" "PASS" "Project: ${GCP_PROJECT}"
@@ -305,23 +265,17 @@ else
     "gcloud config set project YOUR_PROJECT_ID"
 fi
 
-# 6. Check ADC Login + generative-language OAuth Scope
+# 5. Check Vertex AI Application Default Credentials (ADC)
 ADC_TOKEN_VALID=0
-if command -v gcloud >/dev/null 2>&1 && ACCESS_TOKEN="$(gcloud auth application-default print-access-token 2>/dev/null)"; then
+if command -v gcloud >/dev/null 2>&1 && gcloud auth application-default print-access-token >/dev/null 2>&1; then
   ADC_TOKEN_VALID=1
-  TOKEN_SCOPES="$(curl -sS --max-time 5 "https://oauth2.googleapis.com/tokeninfo?access_token=${ACCESS_TOKEN}" 2>/dev/null | grep -o '"scope": *"[^"]*"' || true)"
-  if [[ -z "$TOKEN_SCOPES" ]] || echo "$TOKEN_SCOPES" | grep -q "generative-language"; then
-    record_row "ADC OAuth Scopes" "PASS" "cloud-platform + generative-language"
-  else
-    record_row "ADC OAuth Scopes" "FAIL" "Missing generative-language scope" \
-      "gcloud auth application-default login --billing-project ${TARGET_PROJ} --scopes=\"${REQUIRED_SCOPES}\""
-  fi
+  record_row "Vertex AI ADC" "PASS" "Application Default Credentials active"
 else
-  record_row "ADC OAuth Scopes" "FAIL" "ADC credentials missing or expired" \
-    "gcloud auth application-default login --billing-project ${TARGET_PROJ} --scopes=\"${REQUIRED_SCOPES}\""
+  record_row "Vertex AI ADC" "FAIL" "ADC credentials missing or expired" \
+    "gcloud auth application-default login --billing-project ${TARGET_PROJ}"
 fi
 
-# 7. Check ADC Billing / Quota Project (quota_project_id in application_default_credentials.json)
+# 6. Check ADC Billing / Quota Project (quota_project_id in application_default_credentials.json)
 ADC_QUOTA_PROJ=""
 if [[ -f "$ADC_FILE" ]]; then
   ADC_QUOTA_PROJ="$(grep -o '"quota_project_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$ADC_FILE" 2>/dev/null | sed -E 's/.*"([^"]+)"$/\1/' || true)"
@@ -336,10 +290,10 @@ if [[ -n "$ADC_QUOTA_PROJ" ]]; then
   fi
 else
   record_row "ADC Billing Project" "FAIL" "quota_project_id not set in ADC" \
-    "gcloud auth application-default login --billing-project ${TARGET_PROJ} --scopes=\"${REQUIRED_SCOPES}\" (or: gcloud auth application-default set-quota-project ${TARGET_PROJ})"
+    "gcloud auth application-default login --billing-project ${TARGET_PROJ} (or: gcloud auth application-default set-quota-project ${TARGET_PROJ})"
 fi
 
-# 8. Check Required Google Cloud APIs on Project
+# 7. Check Required Google Cloud APIs on Project
 if [[ -n "$GCP_PROJECT" ]] && command -v gcloud >/dev/null 2>&1 && [[ "$ADC_TOKEN_VALID" -eq 1 ]]; then
   ENABLED_SERVICES="$(gcloud services list --enabled --project="$GCP_PROJECT" --format="value(config.name)" 2>/dev/null || true)"
   if [[ -n "$ENABLED_SERVICES" ]]; then
@@ -350,7 +304,7 @@ if [[ -n "$GCP_PROJECT" ]] && command -v gcloud >/dev/null 2>&1 && [[ "$ADC_TOKE
       fi
     done
     if [[ "${#MISSING_APIS[@]}" -eq 0 ]]; then
-      record_row "GCP Required APIs" "PASS" "All 6 workshop APIs enabled"
+      record_row "GCP Required APIs" "PASS" "All 5 workshop APIs enabled"
     else
       record_row "GCP Required APIs" "FAIL" "Missing ${#MISSING_APIS[@]} API(s): ${MISSING_APIS[0]}..." \
         "gcloud services enable ${REQUIRED_APIS[*]} --project=${GCP_PROJECT}"
@@ -364,25 +318,7 @@ else
     "gcloud services enable ${REQUIRED_APIS[*]} --project=${TARGET_PROJ}"
 fi
 
-# 9. Check gemini-api CLI Project & Token Configuration
-GEMINI_CONFIG_FILE="${HOME}/.config/gemini-api/config.yaml"
-HAS_GEMINI_PROJ=0
-HAS_GEMINI_TOK=0
-if [[ -n "${GEMINI_USER_PROJECT:-}" ]] || { [[ -f "$GEMINI_CONFIG_FILE" ]] && grep -qE "user_project:[[:space:]]*[^[:space:]]+" "$GEMINI_CONFIG_FILE" 2>/dev/null; }; then
-  HAS_GEMINI_PROJ=1
-fi
-if [[ -n "${GEMINI_ACCESS_TOKEN:-}" ]] || { [[ -f "$GEMINI_CONFIG_FILE" ]] && grep -qE "access_token:[[:space:]]*[^[:space:]]+" "$GEMINI_CONFIG_FILE" 2>/dev/null; }; then
-  HAS_GEMINI_TOK=1
-fi
-
-if [[ "$HAS_GEMINI_PROJ" -eq 1 && "$HAS_GEMINI_TOK" -eq 1 ]]; then
-  record_row "gemini-api Auth Config" "PASS" "Configured with user-project & token"
-else
-  record_row "gemini-api Auth Config" "FAIL" "Missing user-project or access-token" \
-    "gemini-api configure --user-project ${TARGET_PROJ} --access-token \"\$(gcloud auth application-default print-access-token)\" --no-keyring"
-fi
-
-# 10. Check Antigravity 2.0 / agy CLI
+# 8. Check Antigravity 2.0 / agy CLI
 if command -v agy >/dev/null 2>&1; then
   AGY_VER="$(agy --version 2>&1 | head -n1)"
   record_row "Antigravity (agy)" "PASS" "agy CLI installed (${AGY_VER})"
@@ -394,6 +330,24 @@ elif [[ -d "/Applications/Antigravity.app" || -d "$HOME/.gemini/antigravity" ]];
 else
   record_row "Antigravity 2.0 / agy" "FAIL" "Neither Antigravity 2.0 nor agy CLI found" \
     "Download Antigravity 2.0 from https://antigravity.google/download or install agy CLI: 'curl -fsSL https://antigravity.google/cli/install.sh | bash'"
+fi
+
+# 9. Check uv
+if command -v uv >/dev/null 2>&1; then
+  UV_VER="$(uv --version 2>&1 | head -n1)"
+  record_row "uv" "PASS" "${UV_VER}"
+else
+  record_row "uv" "FAIL" "uv binary not found in PATH" \
+    "Install uv: 'curl -LsSf https://astral.sh/uv/install.sh | sh' or 'brew install uv'"
+fi
+
+# 10. Check python3
+if command -v python3 >/dev/null 2>&1; then
+  PY_VER="$(python3 --version 2>&1 | head -n1)"
+  record_row "python3" "PASS" "${PY_VER}"
+else
+  record_row "python3" "FAIL" "python3 binary not found in PATH" \
+    "Install Python 3.10+: https://www.python.org/downloads/ or 'brew install python'"
 fi
 
 # 11. Check git
@@ -448,9 +402,6 @@ check_plugin "agy-game-studio" "required" \
 check_plugin "google-cloud-developer" "required" \
   "In Antigravity 2.0: Customizations > Marketplace > 'Google Cloud Developer' (or run './check_env.sh --fix ${TARGET_PROJ}')"
 
-check_plugin "agy-paint-studio" "optional" \
-  "git clone https://github.com/danicat/agy-paint-studio.git ~/.gemini/config/plugins/agy-paint-studio"
-
 printf "└────────────────────────────────┴────────┴──────────────────────────────────────────────┘\n"
 
 if [[ "$WARNINGS" -gt 0 ]]; then
@@ -476,26 +427,21 @@ if [[ "$ERRORS" -gt 0 ]]; then
   echo ""
   echo -e "  ${GREEN}${BOLD}./check_env.sh --fix ${TARGET_PROJ}${NC}"
   echo ""
+  echo -e "💡 After setup completes, reload Antigravity 2.0 with ${BOLD}Cmd+Shift+R${NC} (${BOLD}Ctrl+Shift+R${NC} on Windows/Linux) to load newly installed plugins."
+  echo ""
   echo -e "Or run the full setup manually with a single copy-paste block:"
   echo ""
   cat <<EOF
   export PROJECT_ID="${TARGET_PROJ}"
   gcloud config set project "\$PROJECT_ID"
   gcloud services enable \\
-    generativelanguage.googleapis.com \\
     aiplatform.googleapis.com \\
     developerknowledge.googleapis.com \\
     run.googleapis.com \\
     cloudbuild.googleapis.com \\
     artifactregistry.googleapis.com \\
     --project="\$PROJECT_ID"
-  gcloud auth application-default login \\
-    --billing-project "\$PROJECT_ID" \\
-    --scopes="${REQUIRED_SCOPES}"
-  gemini-api configure \\
-    --user-project "\$PROJECT_ID" \\
-    --access-token "\$(gcloud auth application-default print-access-token)" \\
-    --no-keyring
+  gcloud auth application-default login --billing-project "\$PROJECT_ID"
 EOF
   echo ""
   exit 1
@@ -503,4 +449,5 @@ fi
 
 echo ""
 echo -e "${GREEN}${BOLD}🎉 ENVIRONMENT CHECK PASSED! All tools, plugins, APIs, and billing project credentials are ready.${NC}"
+echo -e "${BLUE}${BOLD}💡 Hint:${NC} Reload Antigravity 2.0 with ${BOLD}Cmd+Shift+R${NC} (or ${BOLD}Ctrl+Shift+R${NC} on Windows/Linux) to apply plugin and setup changes."
 exit 0
